@@ -37,8 +37,11 @@ DOMAIN="company.local"
 IP_ADDRESS="192.168.100.5"
 REVERSE_ZONE="100.168.192"
 ```
-2. Buat Script Executable
+2. Download Git Buat Script Executable
 ```bash
+apt install git
+git clone https://github.com/abdurrozakskom/setup-dns-server.git
+cd setup-dns-server
 chmod +x setup-dns-server.sh
 chmod +x test-dns.sh
 chmod +x backup-dns-config.sh
