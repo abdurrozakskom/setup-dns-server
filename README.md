@@ -2,6 +2,9 @@
 Script otomatis untuk mengkonfigurasi DNS Server menggunakan BIND9 pada sistem operasi Debian Linux.
 
 ---
+<p align="center"><img src="https://tjkt.smkyasmida.sch.id/wp-content/uploads/2025/02/Logo-TJKT-2022-Sampul-Youtube-1.png" width="600"></p>
+
+---
 
 ## 📋 Prerequisites
 Sistem Operasi: Debian 10/11/12
@@ -121,9 +124,53 @@ cp /etc/bind/named.conf.local.backup /etc/bind/named.conf.local
 cp /etc/bind/named.conf.options.backup /etc/bind/named.conf.options
 systemctl restart bind9
 ```
+---
 
+## 💖 Donasi
 
+Jika script ini bermanfaat untuk instalasi eRapor SMK, Anda dapat mendukung pengembang melalui:
 
+- **Saweria** : [https://saweria.co/abdurrozakskom](https://saweria.co/abdurrozakskom)  
+- **Trakteer** : [https://trakteer.id/abdurrozakskom/gift](https://trakteer.id/abdurrozakskom/gift)  
+- **Paypal**  : [https://paypal.me/abdurrozakskom](https://paypal.me/abdurrozakskom)  
 
+Setiap donasi sangat membantu untuk pengembangan fitur baru dan pemeliharaan script.
+
+---
+
+## 📝 Catatan Penting
+- Pastikan IP Address statis sudah dikonfigurasi pada server
+- Firewall harus mengizinkan port 53 TCP/UDP
+- Edit /etc/hosts untuk menambahkan mapping local domain
+- Untuk production, sesuaikan security settings di named.conf.options
+- Update serial number di zone files ketika melakukan perubahan
+
+## 🔒 Security Considerations
+- Sesuaikan allow-query dan allow-recursion sesuai kebutuhan
+- Enable DNSSEC untuk keamanan tambahan
+- Gunakan ACL untuk membatasi akses
+- Monitor query logs untuk aktivitas mencurigakan
+
+## 📞 Support
+Jika mengalami masalah:
+- Check logs: journalctl -u bind9
+- Validasi konfigurasi dengan named-checkconf dan named-checkzone
+- Pastikan service berjalan: systemctl status bind9
+- Test koneksi DNS dari client
+
+---
+
+## 🌐 Sosial Media
+
+Ikuti saya di sosial media untuk tips, update, dan info terbaru seputar eRapor SMK:
+
+- **GitHub**    : [https://github.com/abdurrozakskom](https://github.com/abdurrozakskom)  
+- **Lynk.id**   : [https://lynk.id/abdurrozak.skom](https://lynk.id/abdurrozak.skom)  
+- **Instagram** : [https://instagram.com/abdurrozak.skom](https://instagram.com/abdurrozak.skom)  
+- **Facebook**  : [https://facebook.com/abdurrozak.skom](https://facebook.com/abdurrozak.skom)  
+- **TikTok**   : [https://tiktok.com/abdurrozak.skom](https://tiktok.com/abdurrozak.skom)  
+- **YouTube**   : [https://www.youtube.com/@AbdurRozakSKom](https://www.youtube.com/@AbdurRozakSKom)  
+
+---
 
 
