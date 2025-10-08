@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script untuk konfigurasi DNS Server (Bind9) pada Debian - FIXED VERSION
+# Script untuk konfigurasi DNS Server (Bind9) pada Debian - INTERAKTIF VERSION
 # Author: System Administrator
 # Date: $(date +%Y-%m-%d)
 
@@ -8,6 +8,7 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Function untuk log messages
@@ -23,18 +24,118 @@ warning() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
+info() {
+    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $1"
+}
+
+# Function untuk validasi IP address
+validate_ip() {
+    local ip=$1
+    local stat=1
+    
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        OIFS=$IFS
+        IFS='.'
+        ip=($ip)
+        IFS=$OIFS
+        [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+    fi
+    return $stat
+}
+
+# Function untuk validasi domain
+validate_domain() {
+    local domain=$1
+    if [[ $domain =~ ^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function untuk mendapatkan reverse zone dari IP
+get_reverse_zone() {
+    local ip=$1
+    IFS='.' read -r i1 i2 i3 i4 <<< "$ip"
+    echo "$i3.$i2.$i1"
+}
+
+# Function untuk input interaktif
+get_user_input() {
+    echo -e "${BLUE}"
+    echo "================================================"
+    echo "    KONFIGURASI DNS SERVER - INPUT INTERAKTIF   "
+    echo "================================================"
+    echo -e "${NC}"
+    
+    # Input domain name
+    while true; do
+        read -p "Masukkan nama domain (contoh: example.com): " DOMAIN
+        if validate_domain "$DOMAIN"; then
+            break
+        else
+            error "Format domain tidak valid. Contoh: example.com, company.local, dll."
+        fi
+    done
+    
+    # Input IP address
+    while true; do
+        read -p "Masukkan IP address server DNS (contoh: 192.168.1.10): " IP_ADDRESS
+        if validate_ip "$IP_ADDRESS"; then
+            break
+        else
+            error "IP address tidak valid. Contoh: 192.168.1.10, 10.0.0.5, dll."
+        fi
+    done
+    
+    # Generate reverse zone otomatis
+    REVERSE_ZONE=$(get_reverse_zone "$IP_ADDRESS")
+    info "Reverse zone otomatis: $REVERSE_ZONE"
+    
+    # Konfirmasi reverse zone
+    read -p "Apakah reverse zone '$REVERSE_ZONE' sudah benar? (y/n) [y]: " confirm_reverse
+    confirm_reverse=${confirm_reverse:-y}
+    if [[ $confirm_reverse =~ ^[Nn]$ ]]; then
+        read -p "Masukkan reverse zone manual (contoh: 1.168.192): " REVERSE_ZONE
+    fi
+    
+    # Input email admin
+    read -p "Masukkan email administrator [admin.$DOMAIN]: " EMAIL
+    EMAIL=${EMAIL:-admin.$DOMAIN}
+    
+    # Tampilkan summary
+    echo -e "${GREEN}"
+    echo "================================================"
+    echo "               SUMMARY KONFIGURASI              "
+    echo "================================================"
+    echo "Domain         : $DOMAIN"
+    echo "IP Address     : $IP_ADDRESS"
+    echo "Reverse Zone   : $REVERSE_ZONE"
+    echo "Email Admin    : $EMAIL"
+    echo "================================================"
+    echo -e "${NC}"
+    
+    # Konfirmasi akhir
+    read -p "Apakah konfigurasi di atas sudah benar? (y/n) [y]: " final_confirm
+    final_confirm=${final_confirm:-y}
+    if [[ ! $final_confirm =~ ^[Yy]$ ]]; then
+        info "Mengulang input konfigurasi..."
+        get_user_input
+    fi
+}
+
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
     error "Script harus dijalankan sebagai root user"
     exit 1
 fi
 
-# Variables - Edit sesuai kebutuhan
-DOMAIN="example.com"
-IP_ADDRESS="192.168.1.10"
-REVERSE_ZONE="1.168.192"
+# Dapatkan input dari user
+get_user_input
+
+# Set nameservers
 NAMESERVERS=("ns1.$DOMAIN" "ns2.$DOMAIN")
-EMAIL="admin.$DOMAIN"
 
 log "Memulai konfigurasi DNS Server untuk domain: $DOMAIN"
 
@@ -94,6 +195,9 @@ EOF
 log "Membuat forward zone file..."
 mkdir -p /etc/bind/zones
 
+# Ekstrak octet terakhir dari IP untuk PTR records
+IFS='.' read -r i1 i2 i3 i4 <<< "$IP_ADDRESS"
+
 cat > /etc/bind/zones/db.$DOMAIN << EOF
 ; BIND data file for $DOMAIN
 ;
@@ -115,7 +219,7 @@ ns1     IN      A       $IP_ADDRESS
 ns2     IN      A       $IP_ADDRESS
 www     IN      A       $IP_ADDRESS
 ftp     IN      A       $IP_ADDRESS
-mail     IN      A       $IP_ADDRESS
+mail    IN      A       $IP_ADDRESS
 server  IN      A       $IP_ADDRESS
 
 ; CNAME Records
@@ -144,12 +248,12 @@ cat > /etc/bind/zones/db.$REVERSE_ZONE << EOF
 @       IN      NS      ns2.$DOMAIN.
 
 ; PTR Records
-10      IN      PTR     ns1.$DOMAIN.
-10      IN      PTR     ns2.$DOMAIN.
-10      IN      PTR     www.$DOMAIN.
-10      IN      PTR     ftp.$DOMAIN.
-10      IN      PTR     mail.$DOMAIN.
-10      IN      PTR     server.$DOMAIN.
+$i4      IN      PTR     ns1.$DOMAIN.
+$i4      IN      PTR     ns2.$DOMAIN.
+$i4      IN      PTR     www.$DOMAIN.
+$i4      IN      PTR     ftp.$DOMAIN.
+$i4      IN      PTR     mail.$DOMAIN.
+$i4      IN      PTR     server.$DOMAIN.
 EOF
 
 # Konfigurasi zone di named.conf.local
@@ -300,14 +404,16 @@ fi
 
 log "Konfigurasi DNS Server selesai!"
 echo ""
-echo "=== SUMMARY KONFIGURASI ==="
+echo -e "${GREEN}=== SUMMARY KONFIGURASI ==="
 echo "Domain: $DOMAIN"
 echo "IP Address: $IP_ADDRESS"
+echo "Reverse Zone: $REVERSE_ZONE"
+echo "Email Admin: $EMAIL"
 echo "Service Name: $SERVICE_NAME"
 echo "Service Status: $(systemctl is-active $SERVICE_NAME)"
 echo "Forward Zone: /etc/bind/zones/db.$DOMAIN"
 echo "Reverse Zone: /etc/bind/zones/db.$REVERSE_ZONE"
-echo ""
+echo -e "${NC}"
 echo "=== TEST COMMANDS ==="
 echo "dig @localhost www.$DOMAIN"
 echo "nslookup server.$DOMAIN localhost"

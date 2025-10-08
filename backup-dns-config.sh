@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# Script untuk backup konfigurasi DNS - FIXED VERSION
+# Script untuk backup konfigurasi DNS - INTERAKTIF VERSION
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 log() {
@@ -20,14 +21,53 @@ warning() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
+info() {
+    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $1"
+}
+
+# Function untuk input interaktif
+get_backup_input() {
+    echo -e "${BLUE}"
+    echo "================================================"
+    echo "         BACKUP DNS SERVER - INPUT INTERAKTIF   "
+    echo "================================================"
+    echo -e "${NC}"
+    
+    # Default backup directory
+    DEFAULT_BACKUP_DIR="/root/dns-backup"
+    
+    read -p "Masukkan directory backup [$DEFAULT_BACKUP_DIR]: " BACKUP_DIR
+    BACKUP_DIR=${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}
+    
+    # Tanya apakah include data testing
+    read -p "Include data testing (dig, nslookup results)? (y/n) [y]: " INCLUDE_TESTING
+    INCLUDE_TESTING=${INCLUDE_TESTING:-y}
+    
+    # Tanya apakah cleanup backup lama
+    read -p "Bersihkan backup lama (simpan 5 terbaru)? (y/n) [y]: " CLEANUP_OLD
+    CLEANUP_OLD=${CLEANUP_OLD:-y}
+    
+    echo -e "${GREEN}"
+    echo "================================================"
+    echo "               SETTING BACKUP                   "
+    echo "================================================"
+    echo "Backup Directory : $BACKUP_DIR"
+    echo "Include Testing  : $INCLUDE_TESTING"
+    echo "Cleanup Old      : $CLEANUP_OLD"
+    echo "================================================"
+    echo -e "${NC}"
+}
+
 # Check root
 if [ "$EUID" -ne 0 ]; then
     error "Script harus dijalankan sebagai root user"
     exit 1
 fi
 
+# Dapatkan input dari user
+get_backup_input
+
 # Backup configuration
-BACKUP_DIR="/root/dns-backup"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="dns_backup_$DATE.tar.gz"
 
@@ -58,8 +98,21 @@ ps aux | grep -E "[n]amed|bind" > $BACKUP_DIR/$DATE/process-info.txt 2>/dev/null
 netstat -tulpn | grep :53 > $BACKUP_DIR/$DATE/listening-ports.txt 2>/dev/null
 ss -tulpn | grep :53 >> $BACKUP_DIR/$DATE/listening-ports.txt 2>/dev/null
 
-# Backup test results
-dig @localhost localhost > $BACKUP_DIR/$DATE/dig-test-localhost.txt 2>/dev/null
+# Backup test results jika diminta
+if [[ $INCLUDE_TESTING =~ ^[Yy]$ ]]; then
+    log "Menambahkan data testing..."
+    dig @localhost localhost > $BACKUP_DIR/$DATE/dig-test-localhost.txt 2>/dev/null
+    dig @localhost example.com > $BACKUP_DIR/$DATE/dig-test-example.txt 2>/dev/null 2>/dev/null
+fi
+
+# Cari domain dari konfigurasi
+DOMAIN_INFO="Tidak terdeteksi"
+if [ -f "/etc/bind/named.conf.local" ]; then
+    DOMAIN_INFO=$(grep -oP 'zone "\K[^"]+' /etc/bind/named.conf.local | grep -v -E '^(\.|localhost|.*\.arpa)$' | head -1)
+    if [ -z "$DOMAIN_INFO" ]; then
+        DOMAIN_INFO="Tidak terdeteksi"
+    fi
+fi
 
 # Create info file
 cat > $BACKUP_DIR/$DATE/backup-info.txt << EOF
@@ -67,7 +120,7 @@ DNS Backup Information
 ======================
 Backup Date: $(date)
 Hostname: $(hostname)
-Domain: example.com (edit sesuai kebutuhan)
+Domain: $DOMAIN_INFO
 
 Files Backed Up:
 - /etc/bind/
@@ -76,6 +129,13 @@ Files Backed Up:
 - Service status
 - Process information
 - Network ports
+EOF
+
+if [[ $INCLUDE_TESTING =~ ^[Yy]$ ]]; then
+    echo "- Testing results" >> $BACKUP_DIR/$DATE/backup-info.txt
+fi
+
+cat >> $BACKUP_DIR/$DATE/backup-info.txt << EOF
 
 Restore Instructions:
 1. Extract: tar -xzf $BACKUP_FILE -C /
@@ -112,27 +172,26 @@ log "✅ Checksum created: $BACKUP_DIR/$BACKUP_FILE.md5"
 # Cleanup temporary directory
 rm -rf $BACKUP_DIR/$DATE
 
-# List backup contents
-log "File yang di-backup:"
-tar -tzf $BACKUP_DIR/$BACKUP_FILE | head -20
-
 # Show backup info
 echo ""
 log "=== BACKUP INFORMATION ==="
 echo "Backup File: $BACKUP_DIR/$BACKUP_FILE"
 echo "Size: $(du -h $BACKUP_DIR/$BACKUP_FILE | cut -f1)"
 echo "MD5: $(cat $BACKUP_DIR/$BACKUP_FILE.md5 | cut -d' ' -f1)"
+echo "Domain: $DOMAIN_INFO"
 echo ""
 
 # List existing backups
 log "Backup yang tersedia:"
 ls -la $BACKUP_DIR/dns_backup_*.tar.gz 2>/dev/null | tail -5
 
-# Cleanup old backups (keep last 10)
-BACKUP_COUNT=$(ls -1 $BACKUP_DIR/dns_backup_*.tar.gz 2>/dev/null | wc -l)
-if [ $BACKUP_COUNT -gt 10 ]; then
-    log "Membersihkan backup lama (menyimpan 10 terbaru)..."
-    ls -t $BACKUP_DIR/dns_backup_*.tar.gz 2>/dev/null | tail -n +11 | xargs rm -f
+# Cleanup old backups jika diminta
+if [[ $CLEANUP_OLD =~ ^[Yy]$ ]]; then
+    BACKUP_COUNT=$(ls -1 $BACKUP_DIR/dns_backup_*.tar.gz 2>/dev/null | wc -l)
+    if [ $BACKUP_COUNT -gt 5 ]; then
+        log "Membersihkan backup lama (menyimpan 5 terbaru)..."
+        ls -t $BACKUP_DIR/dns_backup_*.tar.gz 2>/dev/null | tail -n +6 | xargs rm -f
+    fi
 fi
 
 echo ""
